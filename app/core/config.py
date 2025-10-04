@@ -1,31 +1,37 @@
 # app/core/config.py
-from typing import List
-import json
+from typing import List, Optional
+import json, os
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    SUPABASE_URL: str
+    SUPABASE_SERVICE_ROLE_KEY: str
 
-    # other settings ... e.g.
-    SUPABASE_URL: str | None = None
-    SUPABASE_SERVICE_ROLE_KEY: str | None = None
+    API_BASE_URL: str = "http://localhost:8000"
 
-    # make ALLOWED_ORIGINS robust to JSON, CSV, or missing
-    ALLOWED_ORIGINS: List[str] = Field(default_factory=list)
+    # read as a *string* so pydantic doesn't try JSON parsing
+    ALLOWED_ORIGINS_RAW: Optional[str] = None
 
-    @field_validator("ALLOWED_ORIGINS", mode="before")
-    def parse_allowed_origins(cls, v):
-        # Accept None, empty, JSON list string, or comma-separated string
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
+    @property
+    def ALLOWED_ORIGINS(self) -> List[str]:
+        v = self.ALLOWED_ORIGINS_RAW
         if v is None:
+            return []  # fallback to empty -> you can default in CORS
+        s = v.strip()
+        if not s:
             return []
-        if isinstance(v, str):
-            s = v.strip()
-            if not s:
-                return []
-            if s.startswith("["):          # JSON array form
+        if s.startswith("["):  # JSON array
+            try:
                 return json.loads(s)
-            return [p.strip() for p in s.split(",") if p.strip()]  # CSV form
-        return v
+            except Exception:
+                return []
+        # CSV list
+        return [p.strip() for p in s.split(",") if p.strip()]
 
 settings = Settings()
