@@ -1,16 +1,31 @@
+# app/core/config.py
 from typing import List
+import json
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
 
 class Settings(BaseSettings):
-    SUPABASE_URL: str
-    SUPABASE_SERVICE_ROLE_KEY: str
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    API_BASE_URL: str = "http://localhost:8000"
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
+    # other settings ... e.g.
+    SUPABASE_URL: str | None = None
+    SUPABASE_SERVICE_ROLE_KEY: str | None = None
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
+    # make ALLOWED_ORIGINS robust to JSON, CSV, or missing
+    ALLOWED_ORIGINS: List[str] = Field(default_factory=list)
 
-    # pydantic-settings parses list from comma-separated string when annotated as List[str]
-    # e.g. ALLOWED_ORIGINS="http://localhost:3000,https://your-frontend.com"
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    def parse_allowed_origins(cls, v):
+        # Accept None, empty, JSON list string, or comma-separated string
+        if v is None:
+            return []
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return []
+            if s.startswith("["):          # JSON array form
+                return json.loads(s)
+            return [p.strip() for p in s.split(",") if p.strip()]  # CSV form
+        return v
 
 settings = Settings()
